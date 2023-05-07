@@ -63,6 +63,14 @@ options:
     - This is only used when I(state) is C(present).
     type: bool
     required: false
+  visibility:
+    description:
+    - The visibility of the repository.
+    - For GitHub AE, use for internal repository.
+    - Can be one of: public, private, internal (for GitHub AE)
+    - This is only used when I(state) is C(present).
+    type: str
+    required: false
   state:
     description:
     - Whether the repository should exist or not.
@@ -120,6 +128,17 @@ EXAMPLES = '''
     name: myrepo
     state: absent
   register: result
+
+- name: Create an internal Github AE repository
+  community.general.github_repo:
+    access_token: mytoken
+    organization: MyOrganization
+    name: myrepo
+    description: "Just for fun"
+    visibility: "internal"
+    state: present
+    force_defaults: false
+  register: result
 '''
 
 RETURN = '''
@@ -152,7 +171,7 @@ def authenticate(username=None, password=None, access_token=None, api_url=None):
         return Github(base_url=api_url, login_or_token=username, password=password)
 
 
-def create_repo(gh, name, organization=None, private=None, description=None, check_mode=False):
+def create_repo(gh, name, organization=None, private=None, visibility=None, description=None, check_mode=False):
     result = dict(
         changed=False,
         repo=dict())
@@ -170,6 +189,7 @@ def create_repo(gh, name, organization=None, private=None, description=None, che
             repo = target.create_repo(
                 name=name,
                 private=GithubObject.NotSet if private is None else private,
+                visibility=GithubObject.NotSet if visibility is None else visibility,
                 description=GithubObject.NotSet if description is None else description,
             )
             result['repo'] = repo.raw_data
@@ -180,6 +200,9 @@ def create_repo(gh, name, organization=None, private=None, description=None, che
     if private is not None:
         if repo is None or repo.raw_data['private'] != private:
             changes['private'] = private
+    if visibility is not None:
+        if repo is None or repo.raw_data['visibility'] != visibility:
+            changes['visibility'] = visibility
     if description is not None:
         if repo is None or repo.raw_data['description'] not in (description, description or None):
             changes['description'] = description
@@ -190,6 +213,7 @@ def create_repo(gh, name, organization=None, private=None, description=None, che
 
         result['repo'].update({
             'private': repo._private.value if not check_mode else private,
+            'visibility': repo._visibility.value if not check_mode else visibility,
             'description': repo._description.value if not check_mode else description,
         })
         result['changed'] = True
@@ -235,6 +259,7 @@ def run_module(params, check_mode=False):
             name=params['name'],
             organization=params['organization'],
             private=params['private'],
+            visibility=params['visibility'],
             description=params['description'],
             check_mode=check_mode
         )
@@ -250,6 +275,7 @@ def main():
                    choices=["present", "absent"]),
         organization=dict(type='str', required=False, default=None),
         private=dict(type='bool'),
+        visibility=dict(type='str'),
         description=dict(type='str'),
         api_url=dict(type='str', required=False, default='https://api.github.com'),
         force_defaults=dict(type='bool', default=True),
